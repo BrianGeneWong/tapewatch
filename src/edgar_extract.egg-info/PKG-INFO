@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: edgar-extract
+Version: 0.1.0
+Summary: Streaming extraction of structured data from SEC EDGAR filings
+Requires-Python: >=3.10
+Requires-Dist: anthropic>=1.0
+Requires-Dist: pydantic>=2.7
+Requires-Dist: httpx2
+Requires-Dist: python-dotenv
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"

@@ -1,0 +1,2 @@
+[console_scripts]
+edgar-extract = edgar_extract.cli:main

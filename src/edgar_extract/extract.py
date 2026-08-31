@@ -75,6 +75,7 @@ def extract(ref: FilingRef, document_text: str) -> ExtractionRecord:
         form_type=ref.form_type,
         filed_at=ref.filed_at,
         source_url=ref.source_url,
+        items=ref.items,
         extraction=response.parsed_output,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,

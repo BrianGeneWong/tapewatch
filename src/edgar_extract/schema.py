@@ -98,6 +98,9 @@ class ExtractionRecord(BaseModel):
     form_type: str
     filed_at: str
     source_url: str
+    # 8-K item numbers straight from EDGAR — a deterministic
+    # cross-check on the model's event_type.
+    items: list[str]
     extraction: FilingExtraction
     # Instrumentation travels with the record so cost/latency can be
     # aggregated later without a separate join.

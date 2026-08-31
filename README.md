@@ -13,7 +13,13 @@ every record.
 
 ## Status
 
-Skeleton. Nothing runs end to end yet — see the build plan.
+**Week 1 complete.** Ingestion works end to end: the Atom feed is
+parsed, primary documents are located by type off the filing index, and
+HTML is reduced to clean text. 19 filings fetched, 0 failures, no markup
+or iXBRL metadata surviving into the text.
+
+Week 2 (extraction + labels) is next. `extract()` is written but has not
+been run against a real filing.
 
 ## Architecture
 
@@ -36,7 +42,7 @@ model. Never ask an LLM for something you can look up.
 
 ## Build plan
 
-**Week 1 — ingestion, no LLM.** Parse the Atom feed into `FilingRef`
+**Week 1 — ingestion, no LLM.** ✅ Parse the Atom feed into `FilingRef`
 records; fetch and de-HTML primary documents. Done when you can pull 20
 filings to disk as clean text.
 
@@ -65,10 +71,17 @@ requests at 10/sec. Both are enforced.
 ## Usage
 
 ```bash
-edgar-extract poll --form 8-K --count 20
-edgar-extract metrics
-python evals/run_eval.py
+edgar-extract fetch --count 20     # filings to disk as text, no LLM
+edgar-extract extract --limit 10   # run extraction over cached documents
+edgar-extract metrics              # cost and latency summary
+python evals/run_eval.py           # accuracy against hand labels
 ```
+
+Documents are cached under `data/documents/` on fetch. Extraction reads
+from that cache rather than re-fetching, which keeps you inside SEC's rate
+limits while iterating and — more importantly — makes eval runs
+reproducible. Scoring against a corpus that changes under you tells you
+nothing.
 
 ## Results
 
@@ -102,3 +115,12 @@ Latency p50 / p99: —
   constants in `config.py` are configurable. Running the eval across
   models and reporting accuracy against cost per filing is a result worth
   publishing.
+- **8-K item numbers are a free label.** EDGAR states them
+  deterministically (`FilingRef.items`), and they correlate strongly with
+  `event_type` — Item 5.02 is an executive change, 1.01 a material
+  agreement. They are not a substitute for hand labels, but disagreement
+  between the item number and the model's category is a cheap way to find
+  filings worth reviewing by hand.
+- **Line structure comes from block tags only.** Filing HTML soft-wraps
+  mid-phrase; preserving those newlines splits company names across lines
+  and breaks both verbatim extraction and eval string matching.

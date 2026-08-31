@@ -2,7 +2,7 @@
 name = "edgar-extract"
 version = "0.1.0"
 description = "Streaming extraction of structured data from SEC EDGAR filings"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "anthropic>=1.0",
     "pydantic>=2.7",
