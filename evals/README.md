@@ -34,6 +34,27 @@ Report per-field numbers, not one blended score. A pipeline that gets
 `event_type` right 95% of the time and `amounts` right 60% of the time
 has one specific problem, and a blended 82% hides it.
 
+## The rule-based baseline
+
+`edgar_extract/baseline.py` extracts what regular expressions and the 8-K
+item numbers can get, at zero cost. Always score it alongside the model.
+
+Score it **only on the fields it attempts** — `event_type`,
+`effective_date`, `amounts`. Reporting 0% on `parties` for an extractor
+that never tries to find parties is not a finding, it is a category
+error.
+
+The comparison that matters is three rows, not two:
+
+| Extractor | event_type | parties | amounts | cost/filing |
+|---|---|---|---|---|
+| rules only | — | n/a | — | $0.0000 |
+| model only | — | — | — | — |
+| rules + model on unresolved | — | — | — | — |
+
+If the model does not beat the rules on a field, the rules win — they are
+free, deterministic, and never hallucinate.
+
 ## What to publish in the top-level README
 
 - Per-field accuracy on N labeled filings

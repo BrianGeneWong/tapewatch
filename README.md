@@ -72,7 +72,9 @@ requests at 10/sec. Both are enforced.
 
 ```bash
 edgar-extract fetch --count 20     # filings to disk as text, no LLM
+edgar-extract baseline             # rule-only extraction, $0
 edgar-extract extract --limit 10   # run extraction over cached documents
+edgar-extract extract --only-unresolved   # model only where rules failed
 edgar-extract metrics              # cost and latency summary
 python evals/run_eval.py           # accuracy against hand labels
 ```
@@ -115,6 +117,14 @@ Latency p50 / p99: —
   constants in `config.py` are configurable. Running the eval across
   models and reporting accuracy against cost per filing is a result worth
   publishing.
+- **Rules first, model for the rest.** `baseline.py` categorizes filings
+  from their 8-K item numbers and pulls dates and dollar figures by
+  regex, at zero cost. On the first 19 filings it resolved `event_type`
+  for 11; the other 8 were tagged only with wrapper items (7.01, 8.01,
+  9.01) that say "here is a disclosure" without saying what happened —
+  exactly the filings where reading prose is the only option.
+  `extract --only-unresolved` sends just those to the model. Coverage is
+  measured; **accuracy is not, until the labels exist.**
 - **8-K item numbers are a free label.** EDGAR states them
   deterministically (`FilingRef.items`), and they correlate strongly with
   `event_type` — Item 5.02 is an executive change, 1.01 a material
