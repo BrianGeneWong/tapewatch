@@ -87,12 +87,34 @@ volatility — a measurement of alert quality, not a trading claim.
 If four weeks turns out optimistic: cut Flink before cutting the eval
 harness. A project with no measured accuracy tells no story at all.
 
-## Data sources — verify free tiers on day one
+## Data sources — checked Sep 2
 
-- SEC EDGAR Atom — already solved in `edgar-extract`
-- Alpaca — news stream + bars; verify free-tier news access
-- Finnhub — news, company data; verify request ceilings
-- Tiingo / yfinance — EOD bars; verify redistribution terms
+| Provider | Free tier | History | Verdict |
+|---|---|---|---|
+| SEC EDGAR | unlimited, UA required | full | **in use** — public domain, no redistribution question |
+| Alpaca | 200 req/min, paper acct | to 2015 | **chosen** — websocket stream, `symbols` field included |
+| Finnhub | 60 req/min | 1 year | rejected — terms forbid sharing *derived results* |
+| Tiingo | 50/hr, 1000/day | 3 months | rejected — free tier is "internal use only" |
+| Marketaux | 100 req/day, 3 articles each | — | too thin to build a 200-item eval set |
+
+Alpaca needs a free paper-trading account; no funding required. Its terms
+still expect written confirmation before a customer-facing dashboard.
+
+### The licensing rule this implies
+
+Every free news tier restricts redistribution. Rather than negotiate it,
+sidestep it:
+
+- **Article text never leaves the machine that fetched it.** Not
+  committed, not published, not in screenshots.
+- **The public demo runs on EDGAR.** Filings are US government works in
+  the public domain, and that corpus already works.
+- **News labels commit as derived fields plus a URL** — event_id,
+  provider, url, label — never article text. A fetch script rehydrates
+  locally for anyone re-running the eval.
+
+Good design independently of the licensing: the licensed corpus stays
+private, the public artifact stays clean.
 
 The book is **simulated** — a static positions file, stated plainly in
 the README. No brokerage connection, no order path. The system surfaces
