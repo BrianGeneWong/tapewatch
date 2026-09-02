@@ -4,6 +4,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# An empty ANTHROPIC_API_KEY= line in .env is worse than no line at all:
+# it sets the variable to "", which the SDK treats as a supplied
+# credential and which therefore *shadows* every other source in its
+# resolution chain — auth token, `ant auth login` profile, workload
+# identity. The failure it produces ("Could not resolve authentication
+# method") names none of that and sends you looking in the wrong place.
+# Drop empties so the chain resolves as documented.
+for _var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+    if _var in os.environ and not os.environ[_var].strip():
+        del os.environ[_var]
+
 # Model routing is the cost lever this project exists to measure. The
 # primary model sees every event; escalation runs only when the primary
 # abstains or reports low confidence. Swap either, re-run the eval, and
