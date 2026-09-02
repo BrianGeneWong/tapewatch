@@ -1,8 +1,0 @@
-anthropic>=1.0
-pydantic>=2.7
-httpx2
-python-dotenv
-
-[dev]
-pytest
-ruff

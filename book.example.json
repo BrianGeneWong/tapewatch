@@ -1,0 +1,9 @@
+[
+  {"ticker": "UPS",  "shares": 1500,  "sector": "Industrials"},
+  {"ticker": "TDOC", "shares": 4000,  "sector": "Health Care"},
+  {"ticker": "INCY", "shares": 900,   "sector": "Health Care"},
+  {"ticker": "FDS",  "shares": 300,   "sector": "Financials"},
+  {"ticker": "ULCC", "shares": -2500, "sector": "Industrials"},
+  {"ticker": "CPT",  "shares": 700,   "sector": "Real Estate"},
+  {"ticker": "SHLS", "shares": -1800, "sector": "Energy"}
+]

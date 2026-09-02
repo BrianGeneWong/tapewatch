@@ -1,4 +1,4 @@
-from edgar_extract.htmltext import html_to_text
+from tapewatch.htmltext import html_to_text
 
 
 def test_soft_wraps_inside_text_are_collapsed():

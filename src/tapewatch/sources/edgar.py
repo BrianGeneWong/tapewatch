@@ -1,4 +1,4 @@
-"""Polling ingestion from EDGAR.
+"""Polling ingestion from EDGAR — the filings adapter.
 
 v1 is a scheduled poll of the recent-filings Atom feed. Kafka goes in
 week 3, once extraction and evals are proven — see README.
@@ -19,8 +19,9 @@ from urllib.parse import urljoin
 
 import httpx2 as httpx
 
-from .config import SEC_RATE_LIMIT_PER_SEC, SEC_USER_AGENT
-from .htmltext import html_to_text
+from ..config import SEC_RATE_LIMIT_PER_SEC, SEC_USER_AGENT
+from ..htmltext import html_to_text
+from ..schema import SourceEvent
 
 ATOM_NS = {"a": "http://www.w3.org/2005/Atom"}
 
@@ -146,3 +147,40 @@ class EdgarClient:
     def document_text(self, ref: FilingRef) -> str:
         """Fetch the filing's primary document and return it as plain text."""
         return html_to_text(self._get(self._primary_document_url(ref)).text)
+
+
+    # --- adapter interface --------------------------------------------
+
+    kind = "edgar"
+
+    def poll(self, limit: int = 20) -> list[SourceEvent]:
+        """Fetch recent filings and normalize them into SourceEvents.
+
+        Document text is fetched here rather than lazily because the
+        classifier needs it and SEC rate limits make a second pass
+        expensive. A filing that fails to fetch is skipped, not raised —
+        one malformed document must not end a poll.
+        """
+        events: list[SourceEvent] = []
+        for ref in self.recent(count=limit):
+            try:
+                text = self.document_text(ref)
+            except Exception:
+                continue
+            events.append(to_source_event(ref, text))
+        return events
+
+
+def to_source_event(ref: FilingRef, text: str) -> SourceEvent:
+    """Normalize a filing into the envelope the rest of the pipeline sees."""
+    return SourceEvent(
+        event_id=ref.accession_number,
+        source_kind="edgar",
+        published_at=ref.filed_at,
+        source_url=ref.source_url,
+        title=f"{ref.form_type} — {ref.company_name}",
+        text=text,
+        issuer_name=ref.company_name,
+        cik=ref.cik,
+        items=ref.items,
+    )

@@ -17,6 +17,8 @@ What rules cannot do:
   - `parties`      — requires reading prose to know who is the acquirer
                      vs. the target vs. an unrelated mention.
   - `summary`      — requires generation.
+  - `materiality`  — requires judging significance, not category.
+  - `evidence`     — requires knowing which sentence mattered.
 
 Score the baseline only on the fields it attempts (see evals/README.md).
 Reporting 0% on `parties` for an extractor that never tries is not a
@@ -28,8 +30,13 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
-from .fetch import FilingRef
-from .schema import EventType, FilingExtraction, MonetaryAmount
+from .schema import (
+    Classification,
+    EventType,
+    FilingDetail,
+    MonetaryAmount,
+    SourceEvent,
+)
 
 # 8-K item number -> event category. From the SEC's own item definitions.
 ITEM_TO_EVENT: dict[str, EventType] = {
@@ -116,13 +123,31 @@ def amounts_from_text(text: str, limit: int = 10) -> list[MonetaryAmount]:
     return out
 
 
-def extract_baseline(ref: FilingRef, text: str) -> FilingExtraction:
-    """Rule-only extraction. Fields rules cannot do are left empty."""
-    return FilingExtraction(
-        event_type=event_type_from_items(ref.items),
-        summary="",           # not attempted
-        parties=[],           # not attempted
-        amounts=amounts_from_text(text),
-        effective_date=effective_date_from_text(text),
-        extraction_confidence="low" if not ref.items else "medium",
+def extract_baseline(event: SourceEvent) -> Classification:
+    """Rule-only classification. Fields rules cannot do are left empty.
+
+    Materiality is deliberately not attempted. An item number says what
+    kind of event occurred, not how much it matters — a 5.02 covering a
+    board retirement and one covering a CEO's abrupt exit share an item
+    and share nothing else. Scoring rules on materiality would report a
+    number that measures only the prior.
+    """
+    is_filing = event.source_kind == "edgar"
+    text = event.text
+    return Classification(
+        event_type=event_type_from_items(event.items) if event.items else EventType.OTHER,
+        summary="",              # not attempted
+        direction="ambiguous",   # not attempted
+        materiality=0,           # not attempted — see docstring
+        horizon="days",          # not attempted
+        evidence=[],             # not attempted
+        confidence="low" if not event.items else "medium",
+        abstain=not event.items,
+        detail=FilingDetail(
+            parties=[],          # not attempted
+            amounts=amounts_from_text(text),
+            effective_date=effective_date_from_text(text),
+        )
+        if is_filing
+        else None,
     )
