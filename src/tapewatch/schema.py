@@ -160,6 +160,33 @@ class Classification(BaseModel):
     )
 
 
+class Grounding(BaseModel):
+    """Outcome of verifying evidence against the source.
+
+    Carried on the record rather than applied and forgotten. Repairing a
+    span and deleting a fabricated one look identical downstream unless
+    the counts survive, and "how often does the model cite things that
+    are not there" is a headline reliability number — not a detail to
+    reconstruct later from a log.
+    """
+
+    total: int = 0
+    exact: int = 0
+    relocated: int = 0
+    absent: int = 0
+
+    @property
+    def is_grounded(self) -> bool:
+        return self.absent == 0
+
+    @property
+    def cited(self) -> bool:
+        """Whether the model offered any evidence at all. Distinct from
+        being grounded: citing nothing is vacuously grounded and is its
+        own failure."""
+        return self.total > 0
+
+
 class SourceEvent(BaseModel):
     """Normalized envelope yielded by every ingestion adapter.
 
@@ -195,6 +222,7 @@ class EventRecord(BaseModel):
     # worth watching, not a reason to ask the model to guess.
     tickers: list[str] = Field(default_factory=list)
     classification: Classification
+    grounding: Grounding = Field(default_factory=Grounding)
     # Instrumentation travels with the record so cost and latency can be
     # aggregated later without a separate join.
     input_tokens: int

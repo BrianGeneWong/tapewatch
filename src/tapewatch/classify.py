@@ -25,7 +25,7 @@ from .config import (
     price,
 )
 from .grounding import check
-from .schema import Classification, EventRecord, SourceEvent
+from .schema import Classification, EventRecord, Grounding, SourceEvent
 
 client = anthropic.Anthropic()
 
@@ -40,15 +40,27 @@ Rules:
 from background knowledge about the company.
 - If a field is not stated in the source, leave it null or empty. An empty \
 field is correct; an invented one is a defect.
-- Every quote in `evidence` must be copied verbatim from the source. Do \
-not normalize whitespace, punctuation, or capitalization. Quotes that do \
-not appear in the source are the single worst failure mode here.
+- `evidence` is mandatory. Give one to three verbatim quotes from the \
+source that justify your event_type and materiality. The only case where \
+`evidence` may be empty is when `abstain` is true. A classification with \
+no evidence is unusable, so if you cannot find a supporting sentence, \
+that is a signal to abstain rather than to answer without one.
+- Copy quotes exactly. Do not normalize whitespace, punctuation, or \
+capitalization, and do not stitch together text from separate sentences. \
+Character offsets may be approximate; the words must not be. Quoting \
+something the source does not say is the single worst failure here.
 - Party names must appear verbatim in the source.
 - `materiality` is about the issuer, not about how dramatic the language \
 is. Routine, scheduled, and administrative disclosures score low even \
-when they are long.
-- Set `direction` to "ambiguous" freely. Most disclosures genuinely do \
-not imply a direction, and a forced guess is worse than an honest one.
+when they are long. Use the full range: a Section 16 housekeeping filing \
+is under 10, a CFO's abrupt departure is over 70, a merger that remakes \
+the company is over 90. Scores bunched in the middle carry no \
+information and cannot rank anything.
+- `direction` asks which way the disclosure cuts for the issuer, on the \
+plain reading a market participant would give it. A refinancing that \
+extends maturities is positive; an impairment is negative; a scheduled \
+board retirement is genuinely ambiguous. Use "ambiguous" when the source \
+truly supports both readings — not as a way to avoid committing.
 - Set `confidence` to "low", or `abstain` to true, when the source is \
 ambiguous, truncated, or fits no category cleanly. An honest abstention \
 is a correct answer.
@@ -114,6 +126,7 @@ def _call(event: SourceEvent, model: str) -> tuple[Classification, object, int]:
 def _record(
     event: SourceEvent,
     classification: Classification,
+    grounding: Grounding,
     usage,
     latency_ms: int,
     model: str,
@@ -129,6 +142,7 @@ def _record(
         event=event,
         tickers=tickers,
         classification=classification,
+        grounding=grounding,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         cost_usd=round(cost, 6),
@@ -146,9 +160,20 @@ def classify(
 ) -> EventRecord:
     """Single-model classification. No routing, no escalation."""
     classification, usage, latency_ms = _call(event, model)
-    classification.evidence = check(classification, event.text).spans
+
+    result = check(classification, event.text)
+    # Keep the repaired spans, but record what was thrown away. A
+    # fabricated quote is deleted from `evidence` and counted in
+    # `grounding.absent` — never silently.
+    classification.evidence = result.spans
+    grounding = Grounding(
+        total=result.total,
+        exact=result.exact,
+        relocated=result.relocated,
+        absent=result.absent,
+    )
     return _record(
-        event, classification, usage, latency_ms, model, route, tickers or []
+        event, classification, grounding, usage, latency_ms, model, route, tickers or []
     )
 
 
