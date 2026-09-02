@@ -98,8 +98,19 @@ def by_name(issuer_name: str) -> list[str]:
     return _index()[1].get(_normalize_name(issuer_name), [])
 
 
-def resolve(cik: str | None = None, issuer_name: str = "") -> list[str]:
-    """Best available deterministic resolution. Empty list means unresolved."""
+def resolve(
+    cik: str | None = None,
+    issuer_name: str = "",
+    provider_symbols: list[str] | None = None,
+) -> list[str]:
+    """Best available deterministic resolution. Empty list means unresolved.
+
+    Provider tagging wins when present. A news wire that says an article
+    is about AAPL is stating it, not guessing, and re-deriving it from
+    the issuer name would only introduce a way to be wrong.
+    """
+    if provider_symbols:
+        return [s.upper() for s in provider_symbols]
     if cik:
         hits = by_cik(cik)
         if hits:

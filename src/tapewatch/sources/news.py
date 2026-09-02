@@ -1,9 +1,9 @@
-"""Market news ingestion.
+"""Market news ingestion, via Alpaca.
 
 Provider evaluation (September 2026) — see PLAN.md for the full table.
-Alpaca is the choice: free with a paper account, 200 req/min, history
-back to 2015, a real-time websocket stream for week 3, and a `symbols`
-field on every article that makes `resolve` unnecessary for news.
+Alpaca is the choice: free with a paper trading account, 200 req/min,
+history back to 2015, a real-time websocket stream for week 3, and a
+`symbols` field on every article that makes `resolve` unnecessary here.
 
 The licensing constraint that shapes this module
 ------------------------------------------------
@@ -20,47 +20,120 @@ So the rule here, which is also just good design:
   - **Article text never leaves the machine that fetched it.** It is not
     committed, not published, not included in screenshots.
   - **The public demo runs on EDGAR.** SEC filings are US government
-    works in the public domain — no redistribution question exists, and
-    the filings corpus already works.
+    works in the public domain — no redistribution question exists.
   - **News labels commit as derived fields plus a URL**, never article
-    text: event_id, provider, url, and the label itself. A fetch script
-    rehydrates the text locally for anyone re-running the eval.
+    text. A fetch script rehydrates the text locally.
 
-This keeps the licensed corpus private and the public artifact clean,
-without weakening either.
-
-Implementation notes for whoever wires this up
-----------------------------------------------
-  - Headlines are short. Classification on a 12-word headline is a
-    different problem from a 4,000-word filing, and the eval set needs
-    both as separate strata or the accuracy number is an average over
-    two populations that behave differently.
-  - Wires republish. Dedupe on a normalized title plus issuer, not on
-    the provider's id, or the same event alerts three times.
-  - Alpaca returns `symbols` directly. Trust it and skip `resolve` — it
-    is the provider's authoritative field, not a guess.
+Note on freshness: without a real-time data subscription the window
+defaults to 15 minutes behind live. That is invisible to the eval work
+and matters only when week 3 wires the websocket stream.
 """
 
 from __future__ import annotations
 
+import httpx2 as httpx
+
+from ..config import ALPACA_API_KEY, ALPACA_API_SECRET
+from ..htmltext import html_to_text
 from ..schema import SourceEvent
 
-# https://data.alpaca.markets/v1beta1/news — key and secret from a free
-# paper-trading account. No funding required.
 NEWS_URL = "https://data.alpaca.markets/v1beta1/news"
+
+# The API caps a page at 50 regardless of what you ask for.
+MAX_PAGE = 50
 
 
 class NewsClient:
     kind = "news"
 
     def __init__(self, api_key: str | None = None, api_secret: str | None = None):
-        self._api_key = api_key
-        self._api_secret = api_secret
-
-    def poll(self, limit: int = 20) -> list[SourceEvent]:
-        raise NotImplementedError(
-            "News ingestion is not wired yet. See PLAN.md week 1. Map each "
-            "article to SourceEvent(source_kind='news', event_id=str(id), "
-            "title=headline, text=content or summary, published_at=created_at) "
-            "and carry `symbols` through instead of calling resolve()."
+        key = api_key or ALPACA_API_KEY
+        secret = api_secret or ALPACA_API_SECRET
+        if not (key and secret):
+            raise RuntimeError(
+                "ALPACA_API_KEY and ALPACA_API_SECRET are required. Generate a "
+                "key pair from the Alpaca dashboard with Paper Trading selected "
+                "and put them in .env."
+            )
+        # Full URL per request rather than base_url: joining an empty
+        # path onto a base_url yields "/news/", and the trailing slash
+        # 404s.
+        self._client = httpx.Client(
+            headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
+            timeout=30.0,
+            follow_redirects=True,
         )
+
+    def poll(
+        self,
+        limit: int = 20,
+        symbols: list[str] | None = None,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> list[SourceEvent]:
+        """Return the most recent articles, newest first.
+
+        Paginates until `limit` is satisfied. `symbols` narrows to a set
+        of tickers, which is how you build an eval corpus for the book
+        without pulling the whole wire.
+        """
+        params: dict[str, str | int | bool] = {
+            "limit": min(limit, MAX_PAGE),
+            "sort": "desc",
+            "include_content": True,
+            # An article with no body is a headline stub — it cannot be
+            # classified with evidence, so it is not worth a model call.
+            "exclude_contentless": True,
+        }
+        if symbols:
+            params["symbols"] = ",".join(s.upper() for s in symbols)
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+
+        events: list[SourceEvent] = []
+        token: str | None = None
+        while len(events) < limit:
+            if token:
+                params["page_token"] = token
+            resp = self._client.get(NEWS_URL, params=params)
+            resp.raise_for_status()
+            payload = resp.json()
+
+            for article in payload.get("news", []):
+                event = to_source_event(article)
+                if event is not None:
+                    events.append(event)
+
+            token = payload.get("next_page_token")
+            if not token:
+                break
+
+        return events[:limit]
+
+
+def to_source_event(article: dict) -> SourceEvent | None:
+    """Normalize one Alpaca article into the envelope.
+
+    Returns None for an article with no usable body. Content arrives as
+    HTML and is reduced with the same de-HTMLer the filings path uses, so
+    both sources reach the classifier as plain text.
+    """
+    body = article.get("content") or article.get("summary") or ""
+    text = html_to_text(body) if body else ""
+    if not text.strip():
+        return None
+
+    return SourceEvent(
+        event_id=str(article["id"]),
+        source_kind="news",
+        published_at=article.get("created_at", ""),
+        source_url=article.get("url") or "",
+        title=article.get("headline", ""),
+        text=text,
+        # The wire names the issuer in the headline, not as a legal
+        # entity, so issuer_name stays empty — provider_symbols is the
+        # authoritative link to the book.
+        provider_symbols=list(article.get("symbols") or []),
+    )

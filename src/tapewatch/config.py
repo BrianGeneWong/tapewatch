@@ -28,6 +28,9 @@ EFFORT_CAPABLE = {"claude-opus-5", "claude-sonnet-5"}
 # Escalate when the primary model reports confidence at or below this.
 ESCALATE_ON_CONFIDENCE = os.getenv("TAPEWATCH_ESCALATE_ON", "low")
 
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
+ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET", "")
+
 SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "")
 SEC_RATE_LIMIT_PER_SEC = 8  # SEC's documented ceiling is 10; stay under it.
 

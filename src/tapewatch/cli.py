@@ -16,6 +16,8 @@ from .sources.edgar import EdgarClient
 
 def cmd_ingest(args: argparse.Namespace) -> None:
     """Pull source events to disk as clean text. No model involved."""
+    if args.source == "news":
+        return _ingest_news(args)
     client = EdgarClient()
     refs = client.recent(form_type=args.form, count=args.count)
     fetched = skipped = failed = 0
@@ -41,6 +43,30 @@ def cmd_ingest(args: argparse.Namespace) -> None:
     print(f"\ningested {fetched}, skipped {skipped} (cached), failed {failed}")
 
 
+def _ingest_news(args: argparse.Namespace) -> None:
+    """Ingest from the news wire. Article text stays local — see
+    sources/news.py for why."""
+    from .sources.news import NewsClient
+
+    symbols = list(book.load()) if args.book_only else None
+    if args.book_only and not symbols:
+        raise SystemExit("No book to filter by. Copy book.example.json to data/book.json.")
+
+    events = NewsClient().poll(limit=args.count, symbols=symbols)
+    fetched = skipped = 0
+    for event in events:
+        if store.has_event(event.event_id) and not args.force:
+            skipped += 1
+            continue
+        store.write_event(event)
+        fetched += 1
+        print(
+            f"  {event.event_id:<12} {','.join(event.provider_symbols) or '-':<14} "
+            f"{len(event.text):>6,} chars  {event.title[:52]}"
+        )
+    print(f"\ningested {fetched}, skipped {skipped} (cached)")
+
+
 def cmd_resolve(args: argparse.Namespace) -> None:
     """Map cached events to tickers, and report how many touch the book.
 
@@ -56,7 +82,11 @@ def cmd_resolve(args: argparse.Namespace) -> None:
 
     resolved = in_book = 0
     for event in events:
-        tickers = resolve.resolve(cik=event.cik, issuer_name=event.issuer_name)
+        tickers = resolve.resolve(
+            cik=event.cik,
+            issuer_name=event.issuer_name,
+            provider_symbols=event.provider_symbols,
+        )
         if tickers:
             resolved += 1
         held = book.held(tickers)
@@ -109,13 +139,23 @@ def cmd_classify(args: argparse.Namespace) -> None:
         events = [
             e
             for e in events
-            if book.is_relevant(resolve.resolve(cik=e.cik, issuer_name=e.issuer_name))
+            if book.is_relevant(
+                resolve.resolve(
+                    cik=e.cik,
+                    issuer_name=e.issuer_name,
+                    provider_symbols=e.provider_symbols,
+                )
+            )
         ]
         print(f"filtering to {len(events)}/{before} events that touch the book")
 
     spent = 0.0
     for event in events[: args.limit]:
-        tickers = resolve.resolve(cik=event.cik, issuer_name=event.issuer_name)
+        tickers = resolve.resolve(
+            cik=event.cik,
+            issuer_name=event.issuer_name,
+            provider_symbols=event.provider_symbols,
+        )
         if args.route:
             record, discarded = classify_routed(event, tickers)
             if discarded:
@@ -148,8 +188,14 @@ def main() -> None:
     sub = parser.add_subparsers(required=True)
 
     i = sub.add_parser("ingest", help="fetch source events to disk (no model)")
-    i.add_argument("--form", default="8-K")
+    i.add_argument("--source", choices=("edgar", "news"), default="edgar")
+    i.add_argument("--form", default="8-K", help="edgar only")
     i.add_argument("--count", type=int, default=20)
+    i.add_argument(
+        "--book-only",
+        action="store_true",
+        help="news only: fetch just the tickers in the book",
+    )
     i.add_argument("--force", action="store_true", help="re-fetch cached events")
     i.set_defaults(func=cmd_ingest)
 

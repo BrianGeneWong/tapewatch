@@ -177,9 +177,13 @@ class SourceEvent(BaseModel):
     text: str
     issuer_name: str = ""
     # Deterministic metadata the adapter happens to know. EDGAR fills cik
-    # and items; a news adapter typically fills neither.
+    # and items; the news adapter fills provider_symbols instead.
     cik: str | None = None
     items: list[str] = Field(default_factory=list)
+    # Tickers stated by the provider. Authoritative when present — it is
+    # the provider's own tagging, not an inference — so resolution skips
+    # the lookup entirely rather than second-guessing it.
+    provider_symbols: list[str] = Field(default_factory=list)
 
 
 class EventRecord(BaseModel):
